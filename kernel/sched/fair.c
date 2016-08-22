@@ -8092,6 +8092,7 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	capacity >>= SCHED_CAPACITY_SHIFT;
 
 	cpu_rq(cpu)->cpu_capacity_orig = capacity;
+	sdg->sgc->capacity_orig = capacity;
 
 	capacity *= scale_rt_capacity(cpu);
 	capacity >>= SCHED_CAPACITY_SHIFT;
@@ -8107,7 +8108,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 {
 	struct sched_domain *child = sd->child;
 	struct sched_group *group, *sdg = sd->groups;
-	unsigned long capacity;
+	unsigned long capacity, capacity_orig;
 	unsigned long interval;
 
 	interval = msecs_to_jiffies(sd->balance_interval);
@@ -8119,7 +8120,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 		return;
 	}
 
-	capacity = 0;
+	capacity_orig = capacity = 0;
 
 	if (child->flags & SD_OVERLAP) {
 		/*
@@ -8139,15 +8140,19 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 			 * Use capacity_of(), which is set irrespective of domains
 			 * in update_cpu_capacity().
 			 *
-			 * This avoids capacity from being 0 and
+			 * This avoids capacity/capacity_orig from being 0 and
 			 * causing divide-by-zero issues on boot.
+			 *
+			 * Runtime updates will correct capacity_orig.
 			 */
 			if (unlikely(!rq->sd)) {
+				capacity_orig += capacity_orig_of(cpu);
 				capacity += capacity_of(cpu);
 				continue;
 			}
 
 			sgc = rq->sd->groups->sgc;
+			capacity_orig += sgc->capacity_orig;
 			capacity += sgc->capacity;
 		}
 	} else  {
@@ -8158,11 +8163,13 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 
 		group = child->groups;
 		do {
+			capacity_orig += group->sgc->capacity_orig;
 			capacity += group->sgc->capacity;
 			group = group->next;
 		} while (group != child->groups);
 	}
 
+	sdg->sgc->capacity_orig = capacity_orig;
 	sdg->sgc->capacity = capacity;
 }
 
